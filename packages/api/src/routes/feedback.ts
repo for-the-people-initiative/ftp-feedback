@@ -23,7 +23,7 @@ app.post('/', rateLimit({ max: 10, windowMs: 60_000 }), async (c) => {
   }
 
   const body = await c.req.json();
-  const { type, title, body: feedbackBody, user_id, user_email, page_url, route, user_agent, viewport, console_errors, app_version, screenshots } = body;
+  const { type, title, body: feedbackBody, user_id, user_email, page_url, route, user_agent, viewport, console_errors, app_version, screenshots, metadata } = body;
 
   if (!type || !title) {
     return c.json({ error: 'type and title are required' }, 400);
@@ -35,11 +35,12 @@ app.post('/', rateLimit({ max: 10, windowMs: 60_000 }), async (c) => {
 
   const id = `fb_${nanoid(16)}`;
   const screenshotsJson = screenshots?.length ? JSON.stringify(screenshots) : null;
+  const metadataJson = metadata ? JSON.stringify(metadata) : null;
 
   await db.execute({
-    sql: `INSERT INTO feedback (id, app_id, type, title, body, user_id, user_email, page_url, route, user_agent, viewport, console_errors, app_version, screenshots_json)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    args: [id, appId, type, title, feedbackBody || null, user_id || null, user_email || null, page_url || null, route || null, user_agent || null, viewport || null, console_errors || null, app_version || null, screenshotsJson],
+    sql: `INSERT INTO feedback (id, app_id, type, title, body, user_id, user_email, page_url, route, user_agent, viewport, console_errors, app_version, screenshots_json, metadata_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [id, appId, type, title, feedbackBody || null, user_id || null, user_email || null, page_url || null, route || null, user_agent || null, viewport || null, console_errors || null, app_version || null, screenshotsJson, metadataJson],
   });
 
   return c.json({ id, status: 'created' }, 201);

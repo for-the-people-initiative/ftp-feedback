@@ -237,6 +237,7 @@ export class FTPFeedbackElement extends HTMLElement {
     submitBtn.disabled = true;
     submitBtn.textContent = 'Submitting...';
 
+    const metadata = this.collectMetadata();
     const payload = {
       type,
       title,
@@ -248,6 +249,7 @@ export class FTPFeedbackElement extends HTMLElement {
       user_agent: navigator.userAgent,
       viewport: `${window.innerWidth}x${window.innerHeight}`,
       screenshots: this.screenshots.length ? this.screenshots : undefined,
+      metadata,
     };
 
     try {
@@ -271,6 +273,58 @@ export class FTPFeedbackElement extends HTMLElement {
       submitBtn.textContent = 'Submit Feedback';
       this.config.onError?.(err);
     }
+  }
+
+  private collectMetadata(): Record<string, any> {
+    const ua = navigator.userAgent;
+    const nav = navigator as any;
+
+    // Parse OS
+    let os = 'Unknown';
+    if (/Windows NT 10/.test(ua)) os = ua.includes('Windows NT 10.0; Win64') ? 'Windows 10/11' : 'Windows 10';
+    else if (/Windows NT/.test(ua)) os = 'Windows';
+    else if (/Mac OS X (\d+[._]\d+)/.test(ua)) { const v = RegExp.$1.replace('_', '.'); os = `macOS ${v}`; }
+    else if (/iPhone OS (\d+[._]\d+)/.test(ua)) { const v = RegExp.$1.replace('_', '.'); os = `iOS ${v}`; }
+    else if (/Android (\d+(\.\d+)?)/.test(ua)) os = `Android ${RegExp.$1}`;
+    else if (/Linux/.test(ua)) os = 'Linux';
+    else if (/CrOS/.test(ua)) os = 'ChromeOS';
+
+    // Parse browser
+    let browser = 'Unknown';
+    if (/Edg\/(\d+)/.test(ua)) browser = `Edge ${RegExp.$1}`;
+    else if (/OPR\/(\d+)/.test(ua)) browser = `Opera ${RegExp.$1}`;
+    else if (/Chrome\/(\d+)/.test(ua)) browser = `Chrome ${RegExp.$1}`;
+    else if (/Safari\/(\d+)/.test(ua) && /Version\/(\d+(\.\d+)?)/.test(ua)) browser = `Safari ${RegExp.$1}`;
+    else if (/Firefox\/(\d+)/.test(ua)) browser = `Firefox ${RegExp.$1}`;
+
+    // Device type
+    const isMobile = /Mobi|Android.*Mobile|iPhone/.test(ua);
+    const isTablet = /Tablet|iPad|Android(?!.*Mobile)/.test(ua);
+    const deviceType = isMobile ? 'mobile' : isTablet ? 'tablet' : 'desktop';
+
+    // Connection
+    const conn = nav.connection || nav.mozConnection || nav.webkitConnection;
+
+    return {
+      device_type: deviceType,
+      os,
+      browser,
+      screen_resolution: `${screen.width}x${screen.height}`,
+      language: navigator.language,
+      languages: navigator.languages?.join(', '),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      connection_type: conn?.effectiveType || null,
+      connection_downlink: conn?.downlink || null,
+      touch_support: 'ontouchstart' in window || navigator.maxTouchPoints > 0,
+      color_scheme: window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ? 'dark' : 'light',
+      pixel_ratio: window.devicePixelRatio,
+      online: navigator.onLine,
+      cookie_enabled: navigator.cookieEnabled,
+      do_not_track: navigator.doNotTrack === '1',
+      hardware_concurrency: navigator.hardwareConcurrency || null,
+      memory_gb: nav.deviceMemory || null,
+      referrer: document.referrer || null,
+    };
   }
 
   private showSuccess() {

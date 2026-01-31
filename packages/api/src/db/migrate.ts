@@ -37,6 +37,7 @@ const migrations = [
 
 const addColumnMigrations = [
   `ALTER TABLE feedback ADD COLUMN app_id TEXT REFERENCES apps(id)`,
+  `ALTER TABLE feedback ADD COLUMN metadata_json TEXT`,
 ];
 
 async function migrate() {
