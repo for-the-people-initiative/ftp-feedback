@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FTP Feedback — Widget Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1a1a2e; background: #fafafa; }
+    .hero { background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; padding: 80px 20px 60px; text-align: center; }
+    .hero h1 { font-size: 2.5rem; margin-bottom: 12px; font-weight: 800; }
+    .hero p { font-size: 1.15rem; opacity: 0.9; max-width: 600px; margin: 0 auto; }
+    .container { max-width: 800px; margin: 0 auto; padding: 40px 20px; }
+    .section { background: white; border-radius: 12px; padding: 32px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid #e5e7eb; }
+    .section h2 { font-size: 1.3rem; margin-bottom: 8px; color: #1a1a2e; }
+    .section p { color: #6b7280; margin-bottom: 16px; }
+    pre { background: #1e1e2e; color: #cdd6f4; padding: 20px; border-radius: 8px; overflow-x: auto; font-size: 13px; line-height: 1.6; }
+    code { font-family: 'Fira Code', 'Cascadia Code', monospace; }
+    .tag { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; margin-right: 6px; }
+    .tag-iife { background: #dbeafe; color: #1d4ed8; }
+    .tag-esm { background: #dcfce7; color: #16a34a; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; color: #16a34a; font-size: 13px; font-weight: 500; margin-top: 12px; }
+    .controls { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+    .btn { padding: 8px 18px; border-radius: 8px; border: 1.5px solid #e5e7eb; background: white; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.15s; }
+    .btn:hover { border-color: #6366f1; color: #6366f1; }
+    .btn-primary { background: #6366f1; color: white; border-color: #6366f1; }
+    .btn-primary:hover { background: #4f46e5; }
+    footer { text-align: center; padding: 40px 20px; color: #9ca3af; font-size: 13px; }
+    footer a { color: #6366f1; text-decoration: none; }
+    .live-badge { display: inline-block; width: 8px; height: 8px; background: #10b981; border-radius: 50%; margin-right: 4px; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <h1>🗣️ FTP Feedback</h1>
+    <p>A universal, embeddable feedback widget. Add user feedback to any site in 2 minutes.</p>
+  </div>
+
+  <div class="container">
+    <div class="section">
+      <span class="tag tag-iife">Script Tag</span>
+      <h2>Method 1: Script Tag (Easiest)</h2>
+      <p>Just add one script tag. That's it. The widget appears automatically.</p>
+      <pre><code>&lt;script src="https://ftp-feedback-demo.netlify.app/widget.js"
+        data-app-id="app_mhj_default"
+        data-position="bottom-right"
+        data-theme="light"
+        data-categories="bug,suggestion,question"&gt;&lt;/script&gt;</code></pre>
+      <div class="badge"><span class="live-badge"></span> Widget is live on this page → click the button in the bottom-right!</div>
+    </div>
+
+    <div class="section">
+      <span class="tag tag-esm">ESM / npm</span>
+      <h2>Method 2: npm Package</h2>
+      <p>Install and use programmatically for full control.</p>
+      <pre><code>npm install @ftp-feedback/widget</code></pre>
+      <pre><code>import { FTPFeedback } from '@ftp-feedback/widget';
+
+FTPFeedback.init({
+  appId: 'app_mhj_default',
+  position: 'bottom-right',
+  theme: 'light',
+  categories: ['bug', 'suggestion', 'question'],
+  user: { id: 'user123', email: 'user@example.com' },
+  onSubmit: (data) => console.log('Submitted:', data),
+});
+
+// Programmatic control
+FTPFeedback.open();
+FTPFeedback.close();</code></pre>
+    </div>
+
+    <div class="section">
+      <h2>🎮 Try It</h2>
+      <p>Use these buttons to control the widget programmatically:</p>
+      <div class="controls">
+        <button class="btn btn-primary" onclick="document.querySelector('ftp-feedback')?.open()">Open Widget</button>
+        <button class="btn" onclick="document.querySelector('ftp-feedback')?.close()">Close Widget</button>
+        <button class="btn" onclick="toggleTheme()">Toggle Theme</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>⚙️ Configuration</h2>
+      <pre><code>Attribute        │ Default        │ Options
+─────────────────┼────────────────┼──────────────────────
+data-app-id      │ (required)     │ Your app ID
+data-api-url     │ API default    │ Custom API endpoint
+data-position    │ bottom-right   │ bottom-left, top-right, top-left
+data-theme       │ light          │ dark, auto
+data-categories  │ bug,suggestion │ Comma-separated list
+data-user-id     │ —              │ Pre-fill user ID
+data-user-email  │ —              │ Pre-fill user email</code></pre>
+    </div>
+  </div>
+
+  <footer>
+    Built by <a href="https://github.com/for-the-people-initiative">For The People Initiative</a> ·
+    <a href="https://github.com/for-the-people-initiative/ftp-feedback">GitHub</a>
+  </footer>
+
+  <!-- Live widget demo via script tag -->
+  <script src="./widget.js"
+          data-app-id="app_mhj_default"
+          data-api-url="http://localhost:3456"
+          data-position="bottom-right"
+          data-theme="light"
+          data-categories="bug,suggestion,question"></script>
+
+  <script>
+    let dark = false;
+    function toggleTheme() {
+      dark = !dark;
+      const el = document.querySelector('ftp-feedback');
+      if (el) {
+        el.setAttribute('theme', dark ? 'dark' : 'light');
+        el.configure({ theme: dark ? 'dark' : 'light' });
+      }
+    }
+  </script>
+</body>
+</html>

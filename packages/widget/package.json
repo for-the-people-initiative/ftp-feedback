@@ -1,0 +1,24 @@
+{
+  "name": "@ftp-feedback/widget",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/ftp-feedback.umd.cjs",
+  "module": "./dist/ftp-feedback.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/ftp-feedback.js",
+      "require": "./dist/ftp-feedback.umd.cjs"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && tsc --emitDeclarationOnly --declaration --outDir dist",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0"
+  }
+}

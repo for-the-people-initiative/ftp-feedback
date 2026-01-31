@@ -1,0 +1,16 @@
+{
+  "name": "ftp-feedback",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm -w packages/api run dev",
+    "dev:widget": "npm -w packages/widget run dev",
+    "dev:demo": "npm -w packages/demo run dev",
+    "build": "npm -w packages/shared run build && npm -w packages/widget run build && npm -w packages/api run build && npm -w packages/demo run build",
+    "build:widget": "npm -w packages/shared run build && npm -w packages/widget run build",
+    "build:api": "npm -w packages/shared run build && npm -w packages/api run build",
+    "migrate": "npm -w packages/api run migrate"
+  }
+}
