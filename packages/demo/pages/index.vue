@@ -72,7 +72,7 @@ data-user-id     │ —              │ Pre-fill user ID
 data-user-email  │ —              │ Pre-fill user email`
 
 const footerSocialLinks = [
-  { icon: 'github', href: 'https://github.com/for-the-people-initiative/ftp-feedback', label: 'GitHub' },
+  { icon: 'pi pi-github', href: 'https://github.com/for-the-people-initiative/ftp-feedback', label: 'GitHub' },
 ]
 </script>
 
@@ -105,7 +105,7 @@ const footerSocialLinks = [
       </Card>
 
       <!-- Method 2: npm -->
-      <Card style="margin-top: 24px;">
+      <Card style="margin-top: var(--space-l, 26px);">
         <template #title>
           <Tag color="success">ESM / npm</Tag>
           Method 2: npm Package
@@ -120,20 +120,20 @@ const footerSocialLinks = [
       </Card>
 
       <!-- Try It -->
-      <Card style="margin-top: 24px;">
+      <Card style="margin-top: var(--space-l, 26px);">
         <template #title>🎮 Try It</template>
         <template #subtitle>Use these buttons to control the widget programmatically:</template>
         <template #content>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <Button variant="primary" @click="openWidget">Open Widget</Button>
-            <Button variant="outlined" @click="closeWidget">Close Widget</Button>
-            <Button variant="outlined" @click="toggleTheme">Toggle Theme</Button>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <Button label="Open Widget" variant="primary" @click="openWidget" />
+            <Button label="Close Widget" variant="outlined" @click="closeWidget" />
+            <Button label="Toggle Theme" variant="outlined" @click="toggleTheme" />
           </div>
         </template>
       </Card>
 
       <!-- Configuration -->
-      <Card style="margin-top: 24px;">
+      <Card style="margin-top: var(--space-l, 26px);">
         <template #title>⚙️ Configuration</template>
         <template #content>
           <pre><code>{{ configCode }}</code></pre>
@@ -150,10 +150,11 @@ const footerSocialLinks = [
 
 <style scoped>
 pre {
-  background: #1e1e2e;
-  color: #cdd6f4;
-  padding: 20px;
-  border-radius: 8px;
+  background: var(--surface-muted, #060813);
+  color: var(--text-secondary, #9ea5c2);
+  padding: var(--space-l, 26px);
+  border-radius: var(--radius-rounded, 8px);
+  border: 1px solid var(--border-subtle, #1a2244);
   overflow-x: auto;
   font-size: 13px;
   line-height: 1.6;
@@ -167,9 +168,9 @@ code {
   display: inline-block;
   width: 8px;
   height: 8px;
-  background: #10b981;
-  border-radius: 50%;
-  margin-right: 4px;
+  background: var(--feedback-success, #22c55e);
+  border-radius: var(--radius-pill, 9999px);
+  margin-right: var(--space-2xs, 4px);
   animation: pulse 2s infinite;
 }
 

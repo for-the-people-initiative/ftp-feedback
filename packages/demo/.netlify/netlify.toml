@@ -1,4 +1,28 @@
+plugins = []
+headers = []
+redirects = []
+
+[functions]
+
+[functions."*"]
+
 [build]
-  base = "packages/demo"
-  command = "npm run build"
-  publish = ".output/public"
+publish = "/home/claude/clawd/ftp-feedback/packages/demo/dist"
+publishOrigin = "ui"
+commandOrigin = "ui"
+base = "/home/claude/clawd/ftp-feedback/packages/demo"
+command = "pnpm run build"
+
+[build.environment]
+
+[build.processing]
+
+[build.processing.css]
+
+[build.processing.html]
+
+[build.processing.images]
+
+[build.processing.js]
+
+[build.services]
