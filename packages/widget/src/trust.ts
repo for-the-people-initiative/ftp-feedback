@@ -95,20 +95,19 @@ const DEFAULT_THRESHOLDS: TrustThresholds = {
   minSignalsToPass: 3,
 };
 
-// Weights for the confidenceScore (old additive model, must sum to 100)
+// Weights for the confidenceScore (additive model, must sum to 100)
 const WEIGHTS = {
-  moves: 12,
+  cursorBehavior: 30,
   scrolls: 8,
   keyPresses: 10,
-  typingPattern: 10,
+  typingPattern: 12,
   clicks: 5,
   time: 12,
-  cursorPath: 23,
   environment: 10,
-  backspaces: 10,
+  backspaces: 13,
 };
 
-const TOTAL_SIGNALS = 8;
+const TOTAL_SIGNALS = 7;
 
 /** Max path points to store (ring buffer to cap memory) */
 const MAX_PATH_POINTS = 200;
@@ -247,22 +246,22 @@ export class TrustScore {
     const s = this.signals;
 
     // Determine proven status for each signal
-    const movesProven = s.mouseMoves >= t.minMoves;
+    // Cursor Behavior: moves + organic path combined — bot can't score by just firing events
+    const cursorBehaviorProven = s.mouseMoves >= t.minMoves && s.pathAngleVariance >= t.minPathVariance && s.pathSamples >= 5;
     const scrollsProven = s.scrolls >= t.minScrolls;
     const keyPressesProven = s.keyPresses >= t.minKeyPresses;
     const clicksProven = s.clicks >= t.minClicks;
     const timeProven = s.timeOnPageMs >= t.minTimeMs;
-    const cursorPathProven = s.pathAngleVariance >= t.minPathVariance && s.pathSamples >= 5;
     // Typing pattern: variance must exceed threshold AND have enough samples, OR have backspaces (typo corrections)
     const typingPatternProven = (s.typingVariance >= t.minTypingVariance && s.typingSamples >= 5) || s.backspaceCount >= 1;
     const envProven = !s.webdriver && s.screenConsistent;
 
     const breakdown: TrustResult['breakdown'] = {
-      moves: {
-        proven: movesProven,
+      cursorBehavior: {
+        proven: cursorBehaviorProven,
         value: s.mouseMoves,
         threshold: t.minMoves,
-        label: 'Mouse moves',
+        label: 'Cursor behavior',
       },
       scrolls: {
         proven: scrollsProven,
@@ -288,12 +287,6 @@ export class TrustScore {
         threshold: t.minTimeMs,
         label: 'Time on page',
       },
-      cursorPath: {
-        proven: cursorPathProven,
-        value: s.pathAngleVariance,
-        threshold: t.minPathVariance,
-        label: 'Cursor path',
-      },
       typingPattern: {
         proven: typingPatternProven,
         value: s.typingVariance,
@@ -313,19 +306,23 @@ export class TrustScore {
     const passed = provenCount >= t.minSignalsToPass;
 
     // Confidence score (weighted additive approach)
+    // Cursor behavior: both quantity AND quality must be present
+    const moveRatio = Math.min(s.mouseMoves / t.minMoves, 1);
+    const pathQuality = this.cursorPathScore();
+    const cursorBehaviorScore = moveRatio * pathQuality; // Both must be high
+
     const typingPatternScore = s.typingSamples >= 3
       ? Math.min(s.typingVariance / t.minTypingVariance, 1)
       : 0;
-    const backspaceScore = Math.min(s.backspaceCount / 2, 1); // 2 backspaces = full score
+    const backspaceScore = Math.min(s.backspaceCount / 2, 1);
 
     const confidenceScore = Math.round(
-      Math.min(s.mouseMoves / t.minMoves, 1) * WEIGHTS.moves +
+      cursorBehaviorScore * WEIGHTS.cursorBehavior +
       Math.min(s.scrolls / t.minScrolls, 1) * WEIGHTS.scrolls +
       Math.min(s.keyPresses / t.minKeyPresses, 1) * WEIGHTS.keyPresses +
       typingPatternScore * WEIGHTS.typingPattern +
       Math.min(s.clicks / t.minClicks, 1) * WEIGHTS.clicks +
       Math.min(s.timeOnPageMs / t.minTimeMs, 1) * WEIGHTS.time +
-      this.cursorPathScore() * WEIGHTS.cursorPath +
       this.envScore() * WEIGHTS.environment +
       backspaceScore * WEIGHTS.backspaces
     );
