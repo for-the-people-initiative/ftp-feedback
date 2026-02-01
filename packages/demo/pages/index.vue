@@ -71,6 +71,28 @@ data-categories  │ bug,suggestion │ Comma-separated list
 data-user-id     │ —              │ Pre-fill user ID
 data-user-email  │ —              │ Pre-fill user email`
 
+const themingCode = `/* Add to your CSS — overrides the widget's defaults */
+ftp-feedback {
+  --ftp-primary: #e11d48;        /* Your brand color */
+  --ftp-primary-hover: #f43f5e;  /* Hover state */
+  --ftp-radius: 20px;            /* Rounder corners */
+  --ftp-bg: #fafafa;             /* Background */
+}`
+
+const themingTokensCode = `Token               │ Default (light)  │ What it controls
+────────────────────┼──────────────────┼──────────────────────
+--ftp-primary       │ #f97316          │ Buttons, header, accents
+--ftp-primary-hover │ #fb923c          │ Hover states
+--ftp-bg            │ #ffffff          │ Widget background
+--ftp-bg-secondary  │ #f5f5f5          │ Summary/code backgrounds
+--ftp-text          │ #0a0e1f          │ Primary text
+--ftp-text-secondary│ #7680a9          │ Subtitles, placeholders
+--ftp-border        │ #e5e7eb          │ Borders, dividers
+--ftp-radius        │ 13px             │ Widget border radius
+--ftp-shadow        │ (elevation)      │ Widget drop shadow
+--ftp-success       │ #22c55e          │ Submit button, success state
+--ftp-error         │ #ef4444          │ Error messages`
+
 const footerSocialLinks = [
   { icon: 'pi pi-github', href: 'https://github.com/for-the-people-initiative/ftp-feedback', label: 'GitHub' },
 ]
@@ -137,6 +159,18 @@ const footerSocialLinks = [
         <template #title>⚙️ Configuration</template>
         <template #content>
           <pre><code>{{ configCode }}</code></pre>
+        </template>
+      </Card>
+
+      <!-- Theming -->
+      <Card style="margin-top: var(--space-l, 26px);">
+        <template #title>🎨 Custom Theming</template>
+        <template #subtitle>
+          Override CSS custom properties to match your brand. Variables pierce the Shadow DOM automatically.
+        </template>
+        <template #content>
+          <pre><code>{{ themingCode }}</code></pre>
+          <pre style="margin-top: 12px;"><code>{{ themingTokensCode }}</code></pre>
         </template>
       </Card>
     </Section>
