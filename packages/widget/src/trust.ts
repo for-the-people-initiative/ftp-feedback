@@ -27,6 +27,8 @@ export interface TrustThresholds {
   minClicks: number;
   /** Minimum cursor path angle variance to be considered human (default: 0.3 radians²) */
   minPathVariance: number;
+  /** Minimum click duration variance to be considered human (default: 200 ms²) */
+  minClickDurationVariance: number;
   /** Minimum scroll interval variance to be considered human (default: 10000 ms²) */
   minScrollVariance: number;
   /** Minimum typing interval variance to be considered human (default: 500 ms²) */
@@ -58,6 +60,12 @@ export interface TrustSignals {
   scrollDirectionChanges: number;
   /** Number of scroll samples collected */
   scrollSamples: number;
+  /** Average click/tap hold duration in ms */
+  clickAvgDuration: number;
+  /** Variance of click/tap hold durations. High = human, low = bot */
+  clickDurationVariance: number;
+  /** Number of click duration samples collected */
+  clickSamples: number;
   /** Variance of intervals between key presses in ms². High = human, low = bot */
   typingVariance: number;
   /** Number of backspace/delete presses (typo corrections = strong human signal) */
@@ -98,6 +106,7 @@ const DEFAULT_THRESHOLDS: TrustThresholds = {
   minKeyPresses: 5,
   minTimeMs: 60000,
   minClicks: 2,
+  minClickDurationVariance: 200,
   minPathVariance: 0.3,
   minScrollVariance: 10000,
   minTypingVariance: 500,
@@ -110,7 +119,7 @@ const WEIGHTS = {
   scrollBehavior: 12,
   keyPresses: 10,
   typingPattern: 12,
-  clicks: 5,
+  clickBehavior: 5,
   time: 10,
   environment: 10,
   backspaces: 13,
@@ -143,6 +152,10 @@ export class TrustScore {
   private keyTimestamps: number[] = [];
   private keyTsIndex = 0;
 
+  /** Click/tap duration tracking */
+  private clickDownTime: number = 0;
+  private clickDurations: number[] = [];
+
   /** Scroll event data for variance analysis */
   private scrollTimestamps: number[] = [];
   private scrollPositions: number[] = [];
@@ -164,6 +177,9 @@ export class TrustScore {
       pathSamples: 0,
       pathAvgSpeed: 0,
       pathSpeedVariance: 0,
+      clickAvgDuration: 0,
+      clickDurationVariance: 0,
+      clickSamples: 0,
       scrollIntervalVariance: 0,
       scrollDirectionChanges: 0,
       scrollSamples: 0,
@@ -245,12 +261,35 @@ export class TrustScore {
       this.keyTsIndex++;
     }, opts);
 
-    this.target.addEventListener('click', () => {
-      this.signals.clicks++;
+    // Track click/tap duration (mousedown→mouseup / touchstart→touchend)
+    this.target.addEventListener('mousedown', () => {
+      this.clickDownTime = Date.now();
+    }, opts);
+
+    this.target.addEventListener('mouseup', () => {
+      if (this.clickDownTime > 0) {
+        const duration = Date.now() - this.clickDownTime;
+        this.signals.clicks++;
+        if (duration < 2000) { // Ignore long presses > 2s
+          this.clickDurations.push(duration);
+        }
+        this.clickDownTime = 0;
+      }
     }, opts);
 
     this.target.addEventListener('touchstart', () => {
-      this.signals.clicks++;
+      this.clickDownTime = Date.now();
+    }, opts);
+
+    this.target.addEventListener('touchend', () => {
+      if (this.clickDownTime > 0) {
+        const duration = Date.now() - this.clickDownTime;
+        this.signals.clicks++;
+        if (duration < 2000) {
+          this.clickDurations.push(duration);
+        }
+        this.clickDownTime = 0;
+      }
     }, opts);
 
     this.signals.webdriver = !!(navigator as any).webdriver;
@@ -262,6 +301,7 @@ export class TrustScore {
   evaluate(): TrustResult {
     this.signals.timeOnPageMs = Date.now() - this.startTime;
     this.analyzePath();
+    this.analyzeClicks();
     this.analyzeScrolling();
     this.analyzeTyping();
 
@@ -275,7 +315,10 @@ export class TrustScore {
     const scrollBehaviorProven = s.scrolls >= t.minScrolls &&
       (s.scrollIntervalVariance >= t.minScrollVariance || s.scrollDirectionChanges >= 1);
     const keyPressesProven = s.keyPresses >= t.minKeyPresses;
-    const clicksProven = s.clicks >= t.minClicks;
+    // Click Behavior: enough clicks AND (duration variance OR reasonable avg duration)
+    const hasRealisticDuration = s.clickAvgDuration >= 30 && s.clickAvgDuration <= 500;
+    const clickBehaviorProven = s.clicks >= t.minClicks &&
+      (s.clickDurationVariance >= t.minClickDurationVariance || (hasRealisticDuration && s.clickSamples >= 2));
     const timeProven = s.timeOnPageMs >= t.minTimeMs;
     // Typing pattern: variance must exceed threshold AND have enough samples, OR have backspaces (typo corrections)
     const typingPatternProven = (s.typingVariance >= t.minTypingVariance && s.typingSamples >= 5) || s.backspaceCount >= 1;
@@ -300,11 +343,11 @@ export class TrustScore {
         threshold: t.minKeyPresses,
         label: 'Key presses',
       },
-      clicks: {
-        proven: clicksProven,
+      clickBehavior: {
+        proven: clickBehaviorProven,
         value: s.clicks,
         threshold: t.minClicks,
-        label: 'Clicks',
+        label: 'Click behavior',
       },
       time: {
         proven: timeProven,
@@ -346,7 +389,7 @@ export class TrustScore {
       (Math.min(s.scrolls / t.minScrolls, 1) * (s.scrollDirectionChanges >= 1 || s.scrollIntervalVariance >= t.minScrollVariance ? 1 : 0.3)) * WEIGHTS.scrollBehavior +
       Math.min(s.keyPresses / t.minKeyPresses, 1) * WEIGHTS.keyPresses +
       typingPatternScore * WEIGHTS.typingPattern +
-      Math.min(s.clicks / t.minClicks, 1) * WEIGHTS.clicks +
+      Math.min(s.clicks / t.minClicks, 1) * (hasRealisticDuration ? 1 : 0.3) * WEIGHTS.clickBehavior +
       Math.min(s.timeOnPageMs / t.minTimeMs, 1) * WEIGHTS.time +
       this.envScore() * WEIGHTS.environment +
       backspaceScore * WEIGHTS.backspaces
@@ -396,6 +439,28 @@ export class TrustScore {
     this.keyTimestamps = [];
     this.scrollTimestamps = [];
     this.scrollPositions = [];
+    this.clickDurations = [];
+  }
+
+  // ─── Click analysis ───────────────────────────────────────
+
+  /**
+   * Analyze click/tap hold durations:
+   * - Human: 80-200ms hold, variable per click
+   * - Bot: 0-1ms (instant), or perfectly constant
+   */
+  private analyzeClicks(): void {
+    const durations = this.clickDurations;
+    this.signals.clickSamples = durations.length;
+
+    if (durations.length < 2) {
+      this.signals.clickAvgDuration = durations.length === 1 ? durations[0] : 0;
+      this.signals.clickDurationVariance = 0;
+      return;
+    }
+
+    this.signals.clickAvgDuration = durations.reduce((a, b) => a + b, 0) / durations.length;
+    this.signals.clickDurationVariance = this.variance(durations);
   }
 
   // ─── Scroll analysis ──────────────────────────────────────
