@@ -145,11 +145,11 @@ textarea { resize: vertical; min-height: 80px; }
 }
 .btn-back:hover { background: var(--ftp-border); }
 .btn-next {
-  flex: 1; background: linear-gradient(135deg, #f97316, #f59e0b); color: white;
+  margin-left: auto; background: linear-gradient(135deg, #f97316, #f59e0b); color: white;
 }
 .btn-next:hover { opacity: 0.9; }
 .btn-submit {
-  flex: 1; background: #22c55e; color: white;
+  margin-left: auto; background: #22c55e; color: white;
 }
 .btn-submit:hover { background: #16a34a; }
 .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
