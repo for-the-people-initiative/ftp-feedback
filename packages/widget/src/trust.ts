@@ -27,6 +27,8 @@ export interface TrustThresholds {
   minClicks: number;
   /** Minimum cursor path angle variance to be considered human (default: 0.3 radians²) */
   minPathVariance: number;
+  /** Minimum scroll interval variance to be considered human (default: 10000 ms²) */
+  minScrollVariance: number;
   /** Minimum typing interval variance to be considered human (default: 500 ms²) */
   minTypingVariance: number;
   /** Minimum number of signals that must pass to consider user human (default: 3) */
@@ -50,6 +52,12 @@ export interface TrustSignals {
   pathAvgSpeed: number;
   /** Variance of cursor speed. High = human (accel/decel), low = bot (constant) */
   pathSpeedVariance: number;
+  /** Variance of scroll intervals. High = human (irregular), low = bot (constant) */
+  scrollIntervalVariance: number;
+  /** Number of scroll direction changes (up↔down). Humans scroll both ways */
+  scrollDirectionChanges: number;
+  /** Number of scroll samples collected */
+  scrollSamples: number;
   /** Variance of intervals between key presses in ms². High = human, low = bot */
   typingVariance: number;
   /** Number of backspace/delete presses (typo corrections = strong human signal) */
@@ -91,18 +99,19 @@ const DEFAULT_THRESHOLDS: TrustThresholds = {
   minTimeMs: 60000,
   minClicks: 2,
   minPathVariance: 0.3,
+  minScrollVariance: 10000,
   minTypingVariance: 500,
   minSignalsToPass: 3,
 };
 
 // Weights for the confidenceScore (additive model, must sum to 100)
 const WEIGHTS = {
-  cursorBehavior: 30,
-  scrolls: 8,
+  cursorBehavior: 28,
+  scrollBehavior: 12,
   keyPresses: 10,
   typingPattern: 12,
   clicks: 5,
-  time: 12,
+  time: 10,
   environment: 10,
   backspaces: 13,
 };
@@ -134,6 +143,11 @@ export class TrustScore {
   private keyTimestamps: number[] = [];
   private keyTsIndex = 0;
 
+  /** Scroll event data for variance analysis */
+  private scrollTimestamps: number[] = [];
+  private scrollPositions: number[] = [];
+  private scrollTsIndex = 0;
+
   constructor(thresholds?: Partial<TrustThresholds>, target?: EventTarget) {
     this.thresholds = { ...DEFAULT_THRESHOLDS, ...thresholds };
     this.target = target || document;
@@ -150,6 +164,9 @@ export class TrustScore {
       pathSamples: 0,
       pathAvgSpeed: 0,
       pathSpeedVariance: 0,
+      scrollIntervalVariance: 0,
+      scrollDirectionChanges: 0,
+      scrollSamples: 0,
       typingVariance: 0,
       backspaceCount: 0,
       typingSamples: 0,
@@ -188,21 +205,26 @@ export class TrustScore {
       }
     }, opts);
 
-    this.target.addEventListener('scroll', () => {
+    const trackScroll = () => {
       const now = Date.now();
       if (now - scrollThrottle > 200) {
         this.signals.scrolls++;
         scrollThrottle = now;
+        const pos = window.scrollY || document.documentElement.scrollTop || 0;
+        if (this.scrollTimestamps.length < MAX_KEY_TIMESTAMPS) {
+          this.scrollTimestamps.push(now);
+          this.scrollPositions.push(pos);
+        } else {
+          const idx = this.scrollTsIndex % MAX_KEY_TIMESTAMPS;
+          this.scrollTimestamps[idx] = now;
+          this.scrollPositions[idx] = pos;
+        }
+        this.scrollTsIndex++;
       }
-    }, opts);
+    };
 
-    window.addEventListener('scroll', () => {
-      const now = Date.now();
-      if (now - scrollThrottle > 200) {
-        this.signals.scrolls++;
-        scrollThrottle = now;
-      }
-    }, opts);
+    this.target.addEventListener('scroll', trackScroll, opts);
+    window.addEventListener('scroll', trackScroll, opts);
 
     this.target.addEventListener('keydown', (e: Event) => {
       this.signals.keyPresses++;
@@ -240,6 +262,7 @@ export class TrustScore {
   evaluate(): TrustResult {
     this.signals.timeOnPageMs = Date.now() - this.startTime;
     this.analyzePath();
+    this.analyzeScrolling();
     this.analyzeTyping();
 
     const t = this.thresholds;
@@ -248,7 +271,9 @@ export class TrustScore {
     // Determine proven status for each signal
     // Cursor Behavior: moves + organic path combined — bot can't score by just firing events
     const cursorBehaviorProven = s.mouseMoves >= t.minMoves && s.pathAngleVariance >= t.minPathVariance && s.pathSamples >= 5;
-    const scrollsProven = s.scrolls >= t.minScrolls;
+    // Scroll Behavior: enough scrolls AND (interval variance OR direction changes)
+    const scrollBehaviorProven = s.scrolls >= t.minScrolls &&
+      (s.scrollIntervalVariance >= t.minScrollVariance || s.scrollDirectionChanges >= 1);
     const keyPressesProven = s.keyPresses >= t.minKeyPresses;
     const clicksProven = s.clicks >= t.minClicks;
     const timeProven = s.timeOnPageMs >= t.minTimeMs;
@@ -263,11 +288,11 @@ export class TrustScore {
         threshold: t.minMoves,
         label: 'Cursor behavior',
       },
-      scrolls: {
-        proven: scrollsProven,
+      scrollBehavior: {
+        proven: scrollBehaviorProven,
         value: s.scrolls,
         threshold: t.minScrolls,
-        label: 'Scrolls',
+        label: 'Scroll behavior',
       },
       keyPresses: {
         proven: keyPressesProven,
@@ -318,7 +343,7 @@ export class TrustScore {
 
     const confidenceScore = Math.round(
       cursorBehaviorScore * WEIGHTS.cursorBehavior +
-      Math.min(s.scrolls / t.minScrolls, 1) * WEIGHTS.scrolls +
+      (Math.min(s.scrolls / t.minScrolls, 1) * (s.scrollDirectionChanges >= 1 || s.scrollIntervalVariance >= t.minScrollVariance ? 1 : 0.3)) * WEIGHTS.scrollBehavior +
       Math.min(s.keyPresses / t.minKeyPresses, 1) * WEIGHTS.keyPresses +
       typingPatternScore * WEIGHTS.typingPattern +
       Math.min(s.clicks / t.minClicks, 1) * WEIGHTS.clicks +
@@ -369,6 +394,52 @@ export class TrustScore {
     this.abortController = null;
     this.pathPoints = [];
     this.keyTimestamps = [];
+    this.scrollTimestamps = [];
+    this.scrollPositions = [];
+  }
+
+  // ─── Scroll analysis ──────────────────────────────────────
+
+  /**
+   * Analyze scroll behavior for human-like patterns:
+   * - Interval variance: humans scroll irregularly, bots at constant rate
+   * - Direction changes: humans scroll up and down, bots typically only down
+   */
+  private analyzeScrolling(): void {
+    const ts = this.scrollTimestamps;
+    const pos = this.scrollPositions;
+    this.signals.scrollSamples = ts.length;
+
+    if (ts.length < 3) {
+      this.signals.scrollIntervalVariance = 0;
+      this.signals.scrollDirectionChanges = 0;
+      return;
+    }
+
+    // Sort by timestamp (ring buffer may be out of order)
+    const indices = ts.map((_, i) => i).sort((a, b) => ts[a] - ts[b]);
+    const sortedTs = indices.map(i => ts[i]);
+    const sortedPos = indices.map(i => pos[i]);
+
+    // Compute interval variance
+    const intervals: number[] = [];
+    for (let i = 1; i < sortedTs.length; i++) {
+      const interval = sortedTs[i] - sortedTs[i - 1];
+      if (interval < 5000) intervals.push(interval);
+    }
+    this.signals.scrollIntervalVariance = intervals.length >= 2 ? this.variance(intervals) : 0;
+
+    // Count direction changes (up ↔ down)
+    let dirChanges = 0;
+    let lastDir = 0; // 0=none, 1=down, -1=up
+    for (let i = 1; i < sortedPos.length; i++) {
+      const diff = sortedPos[i] - sortedPos[i - 1];
+      if (diff === 0) continue;
+      const dir = diff > 0 ? 1 : -1;
+      if (lastDir !== 0 && dir !== lastDir) dirChanges++;
+      lastDir = dir;
+    }
+    this.signals.scrollDirectionChanges = dirChanges;
   }
 
   // ─── Typing analysis ──────────────────────────────────────
