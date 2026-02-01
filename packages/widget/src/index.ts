@@ -75,4 +75,6 @@ export const FTPFeedback = {
 })();
 
 export { FTPFeedbackElement };
+export { TrustScore } from './trust.js';
+export type { TrustThresholds, TrustResult, TrustSignals } from './trust.js';
 export default FTPFeedback;

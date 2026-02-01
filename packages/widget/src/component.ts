@@ -1,4 +1,6 @@
 import { styles } from './styles.js';
+import { TrustScore } from './trust.js';
+import type { TrustThresholds } from './trust.js';
 
 interface FTPConfig {
   appId: string;
@@ -63,9 +65,11 @@ export class FTPFeedbackElement extends HTMLElement {
   private isOpen = false;
   private wizard: WizardState = { category: null, step: 0, data: {} };
   private submitting = false;
+  private trust: TrustScore | null = null;
 
   static get observedAttributes() {
-    return ['app-id', 'api-url', 'position', 'theme', 'categories', 'user-id', 'user-email', 'branding'];
+    return ['app-id', 'api-url', 'position', 'theme', 'categories', 'user-id', 'user-email', 'branding',
+      'trust-min-moves', 'trust-min-scrolls', 'trust-min-keys', 'trust-min-time', 'trust-min-clicks'];
   }
 
   constructor() {
@@ -91,8 +95,27 @@ export class FTPFeedbackElement extends HTMLElement {
     const cats = this.getAttribute('categories');
     if (cats) this.config.categories = cats.split(',').map(s => s.trim());
     if (this.config.theme !== 'light') this.setAttribute('theme', this.config.theme);
+    // Initialize trust score with configurable thresholds
+    const trustThresholds: Partial<TrustThresholds> = {};
+    const tm = this.getAttribute('trust-min-moves');
+    const ts = this.getAttribute('trust-min-scrolls');
+    const tk = this.getAttribute('trust-min-keys');
+    const tt = this.getAttribute('trust-min-time');
+    const tc = this.getAttribute('trust-min-clicks');
+    if (tm) trustThresholds.minMoves = parseInt(tm);
+    if (ts) trustThresholds.minScrolls = parseInt(ts);
+    if (tk) trustThresholds.minKeyPresses = parseInt(tk);
+    if (tt) trustThresholds.minTimeMs = parseInt(tt);
+    if (tc) trustThresholds.minClicks = parseInt(tc);
+    this.trust = new TrustScore(trustThresholds);
+    this.trust.start();
+
     this.loadDraft();
     this.render();
+  }
+
+  disconnectedCallback() {
+    this.trust?.destroy();
   }
 
   configure(opts: Partial<FTPConfig>) {
@@ -381,6 +404,7 @@ export class FTPFeedbackElement extends HTMLElement {
     }
 
     const autoContext = this.collectMetadata();
+    const trustResult = this.trust?.evaluate();
     const payload = {
       type: cat,
       title: d.title || '',
@@ -391,7 +415,13 @@ export class FTPFeedbackElement extends HTMLElement {
       route: window.location.pathname,
       user_agent: navigator.userAgent,
       viewport: `${window.innerWidth}x${window.innerHeight}`,
-      metadata: { ...autoContext, ...metadata },
+      metadata: {
+        ...autoContext,
+        ...metadata,
+        trust_score: trustResult?.score,
+        trust_passed: trustResult?.passed,
+        trust_signals: trustResult?.signals,
+      },
     };
 
     try {
