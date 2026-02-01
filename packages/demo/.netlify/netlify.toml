@@ -1,27 +1,4 @@
-plugins = []
-headers = []
-redirects = []
-
-[functions]
-
-[functions."*"]
-
 [build]
-publish = "/home/claude/clawd/ftp-feedback/packages/demo/dist"
-publishOrigin = "ui"
-commandOrigin = "ui"
-command = "npm --workspace @ftp-feedback/demo run build"
-
-[build.environment]
-
-[build.processing]
-
-[build.processing.css]
-
-[build.processing.html]
-
-[build.processing.images]
-
-[build.processing.js]
-
-[build.services]
+  base = "packages/demo"
+  command = "npm run build"
+  publish = ".output/public"
