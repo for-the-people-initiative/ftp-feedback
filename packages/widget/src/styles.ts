@@ -137,7 +137,9 @@ textarea { resize: vertical; min-height: 80px; }
 .btn {
   padding: 10px 16px; border-radius: 5px; font-size: 13px; font-weight: 600;
   cursor: pointer; transition: all 0.15s; border: none;
+  display: inline-flex; align-items: center; gap: 6px;
 }
+.btn svg { flex-shrink: 0; }
 .btn-back {
   background: var(--ftp-bg-secondary); color: var(--ftp-text-secondary); border: 1px solid var(--ftp-border);
 }
@@ -146,12 +148,6 @@ textarea { resize: vertical; min-height: 80px; }
   flex: 1; background: linear-gradient(135deg, #f97316, #f59e0b); color: white;
 }
 .btn-next:hover { opacity: 0.9; }
-.btn-next:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-skip {
-  background: transparent; color: var(--ftp-text-secondary); text-decoration: underline;
-  font-weight: 400;
-}
-.btn-skip:hover { color: var(--ftp-text); }
 .btn-submit {
   flex: 1; background: #22c55e; color: white;
 }

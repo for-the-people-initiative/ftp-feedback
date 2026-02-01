@@ -251,9 +251,8 @@ export class FTPFeedbackElement extends HTMLElement {
         ${fieldHtml}
         <div id="errorMsg" class="error-msg" style="display:none"></div>
         <div class="nav-row">
-          <button class="btn btn-back" id="backBtn">← Back</button>
-          ${isOptional && step.type !== 'severity' ? `<button class="btn btn-skip" id="skipBtn">Skip</button>` : ''}
-          <button class="btn btn-next" id="nextBtn" ${!this.canProceed() ? 'disabled' : ''}>${isLastBeforeConfirm ? 'Review' : 'Next →'}</button>
+          <button class="btn btn-back" id="backBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg> Back</button>
+          <button class="btn btn-next" id="nextBtn">${isLastBeforeConfirm ? 'Review' : 'Next'} <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
         </div>
       </div>
     `;
@@ -280,7 +279,7 @@ export class FTPFeedbackElement extends HTMLElement {
         <div class="summary">${items}</div>
         <div id="errorMsg" class="error-msg" style="display:none"></div>
         <div class="nav-row">
-          <button class="btn btn-back" id="backBtn">← Back</button>
+          <button class="btn btn-back" id="backBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg> Back</button>
           <button class="btn btn-submit" id="submitBtn" ${this.submitting ? 'disabled' : ''}>${this.submitting ? 'Submitting...' : 'Submit ✓'}</button>
         </div>
       </div>
@@ -321,9 +320,6 @@ export class FTPFeedbackElement extends HTMLElement {
         if (step) {
           this.wizard.data[step.key] = input.value;
           this.saveDraft();
-          // Update next button state
-          const nextBtn = this.shadow.getElementById('nextBtn') as HTMLButtonElement;
-          if (nextBtn) nextBtn.disabled = !this.canProceed();
         }
       });
       // Auto-focus
@@ -356,13 +352,6 @@ export class FTPFeedbackElement extends HTMLElement {
     });
 
     this.shadow.getElementById('nextBtn')?.addEventListener('click', () => {
-      if (!this.canProceed()) return;
-      this.wizard.step++;
-      this.saveDraft();
-      this.render();
-    });
-
-    this.shadow.getElementById('skipBtn')?.addEventListener('click', () => {
       this.wizard.step++;
       this.saveDraft();
       this.render();
