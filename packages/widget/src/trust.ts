@@ -1,8 +1,8 @@
 /**
  * FTP Trust Score — Lightweight behavioral verification module.
  *
- * Tracks real user signals (mouse, keyboard, scroll, time) and produces
- * a trust score from 0–100. Fully configurable thresholds.
+ * Tracks real user signals (mouse, keyboard, scroll, time, cursor path)
+ * and produces a trust score from 0–100. Fully configurable thresholds.
  *
  * Usage:
  *   const trust = new TrustScore({ minTimeMs: 60000, minMoves: 10 });
@@ -24,6 +24,8 @@ export interface TrustThresholds {
   minTimeMs: number;
   /** Minimum clicks/taps (default: 2) */
   minClicks: number;
+  /** Minimum cursor path angle variance to be considered human (default: 0.3 radians²) */
+  minPathVariance: number;
 }
 
 export interface TrustSignals {
@@ -35,6 +37,14 @@ export interface TrustSignals {
   webdriver: boolean;
   hasTouch: boolean;
   screenConsistent: boolean;
+  /** Variance of angle changes in cursor path. High = human (curvy), low = bot (straight) */
+  pathAngleVariance: number;
+  /** Number of cursor path samples collected */
+  pathSamples: number;
+  /** Average speed of cursor in px/ms */
+  pathAvgSpeed: number;
+  /** Variance of cursor speed. High = human (accel/decel), low = bot (constant) */
+  pathSpeedVariance: number;
 }
 
 export interface TrustResult {
@@ -54,17 +64,28 @@ const DEFAULT_THRESHOLDS: TrustThresholds = {
   minKeyPresses: 5,
   minTimeMs: 60000,
   minClicks: 2,
+  minPathVariance: 0.3,
 };
 
 // How much each signal contributes to the total (must sum to 100)
 const WEIGHTS = {
-  moves: 25,
+  moves: 15,
   scrolls: 10,
-  keyPresses: 20,
-  clicks: 10,
-  time: 20,
+  keyPresses: 15,
+  clicks: 5,
+  time: 15,
+  cursorPath: 25,
   environment: 15,
 };
+
+/** Max path points to store (ring buffer to cap memory) */
+const MAX_PATH_POINTS = 200;
+
+interface PathPoint {
+  x: number;
+  y: number;
+  t: number; // timestamp
+}
 
 export class TrustScore {
   private thresholds: TrustThresholds;
@@ -72,6 +93,10 @@ export class TrustScore {
   private startTime: number = 0;
   private target: EventTarget;
   private abortController: AbortController | null = null;
+
+  /** Cursor path samples (ring buffer) */
+  private pathPoints: PathPoint[] = [];
+  private pathIndex = 0;
 
   constructor(thresholds?: Partial<TrustThresholds>, target?: EventTarget) {
     this.thresholds = { ...DEFAULT_THRESHOLDS, ...thresholds };
@@ -85,6 +110,10 @@ export class TrustScore {
       webdriver: false,
       hasTouch: false,
       screenConsistent: true,
+      pathAngleVariance: 0,
+      pathSamples: 0,
+      pathAvgSpeed: 0,
+      pathSpeedVariance: 0,
     };
   }
 
@@ -98,19 +127,27 @@ export class TrustScore {
     let moveThrottle = 0;
     let scrollThrottle = 0;
 
-    this.target.addEventListener('mousemove', () => {
+    // Mouse move: count + collect path
+    this.target.addEventListener('mousemove', (e: Event) => {
       const now = Date.now();
-      if (now - moveThrottle > 50) { // Count max ~20/sec
+      if (now - moveThrottle > 50) {
         this.signals.mouseMoves++;
         moveThrottle = now;
+        const me = e as MouseEvent;
+        this.addPathPoint(me.clientX, me.clientY, now);
       }
     }, opts);
 
-    this.target.addEventListener('touchmove', () => {
+    // Touch move: count + collect path
+    this.target.addEventListener('touchmove', (e: Event) => {
       const now = Date.now();
       if (now - moveThrottle > 50) {
-        this.signals.mouseMoves++; // Touch counts as movement
+        this.signals.mouseMoves++;
         moveThrottle = now;
+        const te = e as TouchEvent;
+        if (te.touches.length > 0) {
+          this.addPathPoint(te.touches[0].clientX, te.touches[0].clientY, now);
+        }
       }
     }, opts);
 
@@ -122,7 +159,6 @@ export class TrustScore {
       }
     }, opts);
 
-    // Capture scroll on window too (most common scroll target)
     window.addEventListener('scroll', () => {
       const now = Date.now();
       if (now - scrollThrottle > 200) {
@@ -140,7 +176,7 @@ export class TrustScore {
     }, opts);
 
     this.target.addEventListener('touchstart', () => {
-      this.signals.clicks++; // Tap counts as click
+      this.signals.clicks++;
     }, opts);
 
     // Environment checks (one-time)
@@ -153,10 +189,12 @@ export class TrustScore {
   evaluate(): TrustResult {
     this.signals.timeOnPageMs = Date.now() - this.startTime;
 
+    // Compute cursor path analysis
+    this.analyzePath();
+
     const t = this.thresholds;
     const s = this.signals;
 
-    // Score each signal: ratio of actual/threshold, capped at 1.0, then multiply by weight
     const breakdown: TrustResult['breakdown'] = {
       moves: {
         value: s.mouseMoves,
@@ -183,6 +221,11 @@ export class TrustScore {
         threshold: t.minTimeMs,
         score: Math.min(s.timeOnPageMs / t.minTimeMs, 1) * WEIGHTS.time,
       },
+      cursorPath: {
+        value: s.pathAngleVariance,
+        threshold: t.minPathVariance,
+        score: this.cursorPathScore() * WEIGHTS.cursorPath,
+      },
       environment: {
         value: this.envScore(),
         threshold: 1,
@@ -202,7 +245,7 @@ export class TrustScore {
     };
   }
 
-  /** Get current thresholds (for inspection/debug) */
+  /** Get current thresholds */
   getThresholds(): TrustThresholds {
     return { ...this.thresholds };
   }
@@ -216,15 +259,118 @@ export class TrustScore {
   destroy(): void {
     this.abortController?.abort();
     this.abortController = null;
+    this.pathPoints = [];
   }
 
-  /** Environment score: 0.0 – 1.0 */
+  // ─── Path analysis ───────────────────────────────────────
+
+  private addPathPoint(x: number, y: number, t: number): void {
+    if (this.pathPoints.length < MAX_PATH_POINTS) {
+      this.pathPoints.push({ x, y, t });
+    } else {
+      // Ring buffer: overwrite oldest
+      this.pathPoints[this.pathIndex % MAX_PATH_POINTS] = { x, y, t };
+    }
+    this.pathIndex++;
+  }
+
+  /**
+   * Analyze the cursor path for human-like behavior:
+   * 1. Angle variance — humans make curved paths (high variance), bots go straight (low)
+   * 2. Speed variance — humans accelerate/decelerate, bots move at constant speed
+   */
+  private analyzePath(): void {
+    const pts = this.pathPoints;
+    this.signals.pathSamples = pts.length;
+
+    if (pts.length < 3) {
+      // Not enough data — can't compute
+      this.signals.pathAngleVariance = 0;
+      this.signals.pathAvgSpeed = 0;
+      this.signals.pathSpeedVariance = 0;
+      return;
+    }
+
+    // Compute angles between consecutive segments
+    const angles: number[] = [];
+    const speeds: number[] = [];
+
+    for (let i = 1; i < pts.length; i++) {
+      const dx = pts[i].x - pts[i - 1].x;
+      const dy = pts[i].y - pts[i - 1].y;
+      const dt = pts[i].t - pts[i - 1].t;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      // Speed in px/ms
+      if (dt > 0) {
+        speeds.push(dist / dt);
+      }
+
+      // Angle of this segment
+      if (i >= 2) {
+        const prevDx = pts[i - 1].x - pts[i - 2].x;
+        const prevDy = pts[i - 1].y - pts[i - 2].y;
+
+        const prevAngle = Math.atan2(prevDy, prevDx);
+        const currAngle = Math.atan2(dy, dx);
+
+        // Angle change (direction delta)
+        let delta = currAngle - prevAngle;
+        // Normalize to [-π, π]
+        while (delta > Math.PI) delta -= 2 * Math.PI;
+        while (delta < -Math.PI) delta += 2 * Math.PI;
+
+        angles.push(delta);
+      }
+    }
+
+    // Compute variance of angle changes
+    this.signals.pathAngleVariance = this.variance(angles);
+
+    // Compute speed stats
+    if (speeds.length > 0) {
+      this.signals.pathAvgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+      this.signals.pathSpeedVariance = this.variance(speeds);
+    }
+  }
+
+  /**
+   * Cursor path score: 0.0 – 1.0
+   *
+   * Combines angle variance (are movements curvy?) and speed variance
+   * (does the cursor accelerate/decelerate?).
+   *
+   * Human: high angle variance (>0.3), high speed variance
+   * Bot: near-zero angle variance (straight lines), constant speed
+   */
+  private cursorPathScore(): number {
+    const pts = this.pathPoints.length;
+
+    // Not enough samples — neutral (don't penalize mobile/touch users)
+    if (pts < 5) return 0.5;
+
+    let score = 0;
+
+    // Angle variance: 0 = straight line bot, >threshold = human curves
+    const angleVar = this.signals.pathAngleVariance;
+    const angleScore = Math.min(angleVar / this.thresholds.minPathVariance, 1);
+    score += angleScore * 0.6; // 60% of cursor path weight
+
+    // Speed variance: humans speed up/slow down, bots are constant
+    const speedVar = this.signals.pathSpeedVariance;
+    // Threshold: any meaningful speed variation is good (>0.01 px²/ms²)
+    const speedScore = speedVar > 0.01 ? Math.min(speedVar / 0.1, 1) : 0;
+    score += speedScore * 0.4; // 40% of cursor path weight
+
+    return Math.min(score, 1);
+  }
+
+  // ─── Environment ─────────────────────────────────────────
+
   private envScore(): number {
     let score = 1.0;
     if (this.signals.webdriver) score -= 0.6;
     if (!this.signals.screenConsistent) score -= 0.3;
-    // Mobile claiming touch but no touch events recorded is suspicious
-    // (only penalize after some time has passed)
     if (this.signals.hasTouch && this.signals.mouseMoves === 0 && this.signals.timeOnPageMs > 10000) {
       score -= 0.1;
     }
@@ -233,11 +379,18 @@ export class TrustScore {
 
   private checkScreenConsistency(): boolean {
     const { innerWidth, innerHeight, screen } = window;
-    // Headless browsers often have 0-dimension or mismatched screen
     if (innerWidth === 0 || innerHeight === 0) return false;
     if (screen.width === 0 || screen.height === 0) return false;
-    // Window shouldn't be bigger than screen
     if (innerWidth > screen.width + 50 || innerHeight > screen.height + 50) return false;
     return true;
+  }
+
+  // ─── Math helpers ────────────────────────────────────────
+
+  private variance(values: number[]): number {
+    if (values.length < 2) return 0;
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    const squaredDiffs = values.map(v => (v - mean) ** 2);
+    return squaredDiffs.reduce((a, b) => a + b, 0) / values.length;
   }
 }
