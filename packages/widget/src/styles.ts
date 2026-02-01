@@ -66,8 +66,8 @@ export const styles = `
 .header h3 { font-size: 15px; font-weight: 600; }
 .close-btn {
   background: none; border: none; color: white; cursor: pointer;
-  width: 28px; height: 28px; border-radius: 5px;
-  display: flex; align-items: center; justify-content: center; font-size: 18px;
+  width: 36px; height: 36px; border-radius: 5px;
+  display: flex; align-items: center; justify-content: center; font-size: 24px;
 }
 .close-btn:hover { background: rgba(255,255,255,0.2); }
 

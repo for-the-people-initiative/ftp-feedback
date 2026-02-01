@@ -65,7 +65,7 @@ export class FTPFeedbackElement extends HTMLElement {
   private submitting = false;
 
   static get observedAttributes() {
-    return ['app-id', 'api-url', 'position', 'theme', 'categories', 'user-id', 'user-email'];
+    return ['app-id', 'api-url', 'position', 'theme', 'categories', 'user-id', 'user-email', 'branding'];
   }
 
   constructor() {
@@ -182,7 +182,7 @@ export class FTPFeedbackElement extends HTMLElement {
         <div class="body" id="formBody">
           ${this.renderStep()}
         </div>
-        <div class="powered">Powered by <a href="https://github.com/for-the-people-initiative/ftp-feedback" target="_blank">FTP Feedback</a></div>
+        ${this.getAttribute('branding') !== 'false' ? '<div class="powered">Powered by <a href="https://github.com/for-the-people-initiative/ftp-feedback" target="_blank">FTP Feedback</a></div>' : ''}
       </div>
     `;
   }
