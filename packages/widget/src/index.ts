@@ -53,7 +53,7 @@ export const FTPFeedback = {
     if (appId) {
       // Wait for DOM
       const init = () => {
-        FTPFeedback.init({
+        const el = FTPFeedback.init({
           appId,
           apiUrl: script.getAttribute('data-api-url') || undefined,
           position: script.getAttribute('data-position') || undefined,
@@ -64,6 +64,9 @@ export const FTPFeedback = {
             email: script.getAttribute('data-user-email') || undefined,
           },
         });
+        if (script.hasAttribute('data-no-trigger')) {
+          el.setAttribute('no-trigger', '');
+        }
       };
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
