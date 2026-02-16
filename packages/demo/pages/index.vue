@@ -10,6 +10,7 @@ useHead({
   script: [
     {
       src: '/widget.js',
+      type: 'text/javascript',
       'data-app-id': 'app_mhj_default',
       'data-api-url': 'https://ftp-feedback-api.onrender.com',
       'data-position': 'bottom-right',
