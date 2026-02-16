@@ -18,32 +18,35 @@ type Category = 'bug' | 'suggestion' | 'question';
 interface WizardState {
   category: Category | null;
   step: number; // 0 = category picker
-  data: Record<string, string>;
+  data: Record<string, any>;
 }
 
-const FLOWS: Record<Category, { steps: { key: string; title: string; subtitle: string; type: 'input' | 'textarea' | 'severity'; required: boolean; placeholder?: string; defaultValue?: () => string }[]; totalSteps: number }> = {
+const FLOWS: Record<Category, { steps: { key: string; title: string; subtitle: string; type: 'input' | 'textarea' | 'severity' | 'upload'; required: boolean; placeholder?: string; defaultValue?: () => string }[]; totalSteps: number }> = {
   bug: {
-    totalSteps: 4,
+    totalSteps: 5,
     steps: [
       { key: 'title', title: 'What happened?', subtitle: 'Give a brief title for the bug', type: 'input', required: true, placeholder: 'e.g. Button doesn\'t respond when clicked' },
       { key: 'reproduction', title: 'Steps to reproduce', subtitle: 'What were you doing when this happened?', type: 'textarea', required: false, placeholder: 'I clicked on... then I...' },
       { key: 'expected', title: 'Expected vs actual', subtitle: 'What should have happened instead?', type: 'textarea', required: false, placeholder: 'I expected... but instead...' },
       { key: 'severity', title: 'How severe is this?', subtitle: 'Pick the option that best describes the impact', type: 'severity', required: true },
+      { key: 'screenshots', title: 'Add screenshots', subtitle: 'Attach images to help us understand (optional)', type: 'upload', required: false },
     ],
   },
   suggestion: {
-    totalSteps: 3,
+    totalSteps: 4,
     steps: [
       { key: 'title', title: 'What\'s your idea?', subtitle: 'A short title for your suggestion', type: 'input', required: true, placeholder: 'e.g. Add dark mode support' },
       { key: 'description', title: 'Tell us more', subtitle: 'Describe your idea in detail', type: 'textarea', required: false, placeholder: 'It would be great if...' },
       { key: 'motivation', title: 'Why does it matter?', subtitle: 'Help us understand the value (optional)', type: 'textarea', required: false, placeholder: 'This would help because...' },
+      { key: 'screenshots', title: 'Add screenshots', subtitle: 'Attach images to help us understand (optional)', type: 'upload', required: false },
     ],
   },
   question: {
-    totalSteps: 2,
+    totalSteps: 3,
     steps: [
       { key: 'title', title: 'What\'s your question?', subtitle: 'Ask away — no question is too small', type: 'textarea', required: true, placeholder: 'How do I...' },
       { key: 'context', title: 'Where are you stuck?', subtitle: 'Share the page or context (optional)', type: 'input', required: false, placeholder: 'URL or description', defaultValue: () => window.location.href },
+      { key: 'screenshots', title: 'Add screenshots', subtitle: 'Attach images to help us understand (optional)', type: 'upload', required: false },
     ],
   },
 };
@@ -259,6 +262,26 @@ export class FTPFeedbackElement extends HTMLElement {
       fieldHtml = `<input type="text" id="stepInput" placeholder="${step.placeholder || ''}" value="${this.escAttr(val)}" maxlength="200">`;
     } else if (step.type === 'textarea') {
       fieldHtml = `<textarea id="stepInput" placeholder="${step.placeholder || ''}" rows="4">${this.escHtml(val)}</textarea>`;
+    } else if (step.type === 'upload') {
+      const screenshots: string[] = this.wizard.data.screenshots || [];
+      const previewHtml = screenshots.map((src: string, i: number) => `
+        <div class="upload-thumb">
+          <img src="${src}" alt="Screenshot ${i + 1}">
+          <button class="upload-remove" data-idx="${i}">&times;</button>
+        </div>
+      `).join('');
+      fieldHtml = `
+        <div class="upload-area">
+          <label class="upload-btn" id="uploadLabel">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Choose images (max 5)
+            <input type="file" accept="image/*" multiple id="fileInput" style="display:none">
+          </label>
+          <div class="upload-hint">📸 Screenshots: Win+Shift+S · Cmd+Shift+4 · iPhone: side+vol · Android: power+vol</div>
+          ${screenshots.length > 0 ? `<div class="upload-grid">${previewHtml}</div>` : ''}
+          <div id="uploadError" class="error-msg" style="display:none"></div>
+        </div>
+      `;
     } else if (step.type === 'severity') {
       fieldHtml = `<div class="severity-grid">${SEVERITY_OPTIONS.map(s => `
         <button class="severity-btn ${val === s.value ? 'active' : ''}" data-sev="${s.value}">
@@ -285,8 +308,13 @@ export class FTPFeedbackElement extends HTMLElement {
     const cat = this.wizard.category!;
     const flow = FLOWS[cat];
     const items = flow.steps
-      .filter(s => this.wizard.data[s.key]?.trim())
+      .filter(s => s.type === 'upload' ? (this.wizard.data.screenshots?.length > 0) : this.wizard.data[s.key]?.trim())
       .map(s => {
+        if (s.type === 'upload') {
+          const screenshots: string[] = this.wizard.data.screenshots || [];
+          if (screenshots.length === 0) return '';
+          return `<div class="summary-item"><div class="summary-label">${s.title}</div><div class="upload-grid">${screenshots.map((src: string) => `<div class="upload-thumb"><img src="${src}"></div>`).join('')}</div></div>`;
+        }
         let displayVal = this.wizard.data[s.key];
         if (s.type === 'severity') {
           const opt = SEVERITY_OPTIONS.find(o => o.value === displayVal);
@@ -362,6 +390,48 @@ export class FTPFeedbackElement extends HTMLElement {
       });
     });
 
+    // File upload
+    const fileInput = this.shadow.getElementById('fileInput') as HTMLInputElement;
+    if (fileInput) {
+      fileInput.addEventListener('change', async () => {
+        const files = Array.from(fileInput.files || []);
+        const screenshots: string[] = this.wizard.data.screenshots || [];
+        const errorEl = this.shadow.getElementById('uploadError');
+        if (errorEl) errorEl.style.display = 'none';
+
+        for (const file of files) {
+          if (screenshots.length >= 5) {
+            if (errorEl) { errorEl.textContent = 'Maximum 5 images allowed'; errorEl.style.display = 'block'; }
+            break;
+          }
+          if (file.size > 5 * 1024 * 1024) {
+            if (errorEl) { errorEl.textContent = `${file.name} exceeds 5MB limit`; errorEl.style.display = 'block'; }
+            continue;
+          }
+          try {
+            const dataUrl = await this.resizeImage(file);
+            screenshots.push(dataUrl);
+          } catch { /* skip */ }
+        }
+        this.wizard.data.screenshots = screenshots;
+        this.saveDraft();
+        this.render();
+      });
+    }
+
+    // Remove screenshot buttons
+    this.shadow.querySelectorAll('.upload-remove').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const idx = parseInt((btn as HTMLElement).dataset.idx!);
+        const screenshots: string[] = this.wizard.data.screenshots || [];
+        screenshots.splice(idx, 1);
+        this.wizard.data.screenshots = screenshots;
+        this.saveDraft();
+        this.render();
+      });
+    });
+
     // Navigation
     this.shadow.getElementById('backBtn')?.addEventListener('click', () => {
       if (this.wizard.step <= 1) {
@@ -415,6 +485,7 @@ export class FTPFeedbackElement extends HTMLElement {
       route: window.location.pathname,
       user_agent: navigator.userAgent,
       viewport: `${window.innerWidth}x${window.innerHeight}`,
+      screenshots: this.wizard.data.screenshots || [],
       metadata: {
         ...autoContext,
         ...metadata,
@@ -481,6 +552,33 @@ export class FTPFeedbackElement extends HTMLElement {
       online: navigator.onLine,
       referrer: document.referrer || null,
     };
+  }
+
+  private resizeImage(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX = 1920;
+          let { width, height } = img;
+          if (width > MAX || height > MAX) {
+            if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+            else { width = Math.round(width * MAX / height); height = MAX; }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.8));
+        };
+        img.onerror = reject;
+        img.src = reader.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   }
 
   private showSuccess() {

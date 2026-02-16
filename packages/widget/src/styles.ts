@@ -178,6 +178,30 @@ textarea { resize: vertical; min-height: 80px; }
 .success h3 { font-size: 18px; margin-bottom: 6px; color: var(--ftp-text); }
 .success p { color: var(--ftp-text-secondary); font-size: 13px; }
 
+/* Upload */
+.upload-area { display: flex; flex-direction: column; gap: 10px; }
+.upload-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 14px; border: 2px dashed var(--ftp-border); border-radius: 8px;
+  background: var(--ftp-bg); color: var(--ftp-text-secondary); cursor: pointer;
+  font-size: 13px; font-weight: 500; transition: all 0.15s;
+}
+.upload-btn:hover { border-color: #f97316; color: #f97316; }
+.upload-hint { font-size: 11px; color: var(--ftp-text-secondary); text-align: center; line-height: 1.4; }
+.upload-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.upload-thumb {
+  position: relative; width: 80px; height: 80px; border-radius: 6px; overflow: hidden;
+  border: 1px solid var(--ftp-border);
+}
+.upload-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.upload-remove {
+  position: absolute; top: 2px; right: 2px;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: rgba(0,0,0,0.6); color: white; border: none; cursor: pointer;
+  font-size: 14px; line-height: 1; display: flex; align-items: center; justify-content: center;
+}
+.upload-remove:hover { background: var(--ftp-error); }
+
 .error-msg { color: var(--ftp-error); font-size: 12px; margin-top: 10px; }
 
 .powered {
