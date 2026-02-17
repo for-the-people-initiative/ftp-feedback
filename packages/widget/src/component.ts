@@ -6,7 +6,9 @@ interface FTPConfig {
   appId: string;
   apiUrl: string;
   position: string;
+  formPosition: string;
   theme: string;
+  themeColors: { primary?: string; gradient?: string } | null;
   categories: string[];
   user: { id?: string; email?: string };
   onSubmit?: (data: any) => void;
@@ -82,7 +84,9 @@ export class FTPFeedbackElement extends HTMLElement {
       appId: '',
       apiUrl: DEFAULT_API,
       position: 'bottom-right',
+      formPosition: '',
       theme: 'light',
+      themeColors: null,
       categories: ['bug', 'suggestion', 'question'],
       user: {},
     };
@@ -95,9 +99,27 @@ export class FTPFeedbackElement extends HTMLElement {
     this.config.theme = this.getAttribute('theme') || this.config.theme;
     this.config.user.id = this.getAttribute('user-id') || undefined;
     this.config.user.email = this.getAttribute('user-email') || undefined;
+    this.config.formPosition = this.getAttribute('data-form-position') || '';
     const cats = this.getAttribute('categories');
     if (cats) this.config.categories = cats.split(',').map(s => s.trim());
     if (this.config.theme !== 'light') this.setAttribute('theme', this.config.theme);
+    // Parse theme colors
+    const themeColorsAttr = this.getAttribute('data-theme-colors');
+    if (themeColorsAttr) {
+      try {
+        this.config.themeColors = JSON.parse(themeColorsAttr);
+      } catch { /* ignore invalid JSON */ }
+    }
+    // Apply theme color CSS custom properties
+    if (this.config.themeColors) {
+      const host = this.shadow.host as HTMLElement;
+      if (this.config.themeColors.primary) {
+        host.style.setProperty('--ftp-theme-primary', this.config.themeColors.primary);
+      }
+      if (this.config.themeColors.gradient) {
+        host.style.setProperty('--ftp-theme-gradient', this.config.themeColors.gradient);
+      }
+    }
     // Initialize trust score with configurable thresholds
     const trustThresholds: Partial<TrustThresholds> = {};
     const tm = this.getAttribute('trust-min-moves');
@@ -182,7 +204,7 @@ export class FTPFeedbackElement extends HTMLElement {
     const pos = this.config.position;
     this.shadow.innerHTML = `
       <style>${styles}</style>
-      <button class="trigger ${pos}" id="trigger" style="${this.hasAttribute('no-trigger') ? 'display:none' : ''}"
+      <button class="trigger ${pos}" id="trigger"
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
         </svg>
@@ -193,7 +215,7 @@ export class FTPFeedbackElement extends HTMLElement {
   }
 
   private renderOverlay(): string {
-    const pos = this.config.position;
+    const pos = this.config.formPosition || this.config.position;
     const headerTitle = this.wizard.step === 0 ? 'Send Feedback' :
       this.isConfirmStep ? 'Confirm & Submit' :
       `${this.categoryLabel(this.wizard.category!)}`;
