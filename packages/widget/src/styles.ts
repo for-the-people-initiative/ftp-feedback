@@ -47,7 +47,7 @@ export const styles = `
 
 .overlay {
   position: fixed; z-index: 100000;
-  width: 380px; max-height: 560px;
+  width: 380px; max-width: calc(100vw - 32px); max-height: min(560px, calc(100dvh - 32px));
   background: var(--ftp-bg); border-radius: var(--ftp-radius);
   box-shadow: var(--ftp-shadow); border: 1px solid var(--ftp-border);
   overflow: hidden; display: flex; flex-direction: column;
@@ -224,5 +224,6 @@ textarea { resize: vertical; min-height: 80px; }
 
 @media (max-width: 440px) {
   .overlay { width: calc(100vw - 24px); left: 12px !important; right: 12px !important; }
+  .overlay.center { left: 50% !important; right: auto !important; transform: translate(-50%, -50%); }
 }
 `;
