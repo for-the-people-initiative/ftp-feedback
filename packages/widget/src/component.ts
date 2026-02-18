@@ -71,9 +71,10 @@ export class FTPFeedbackElement extends HTMLElement {
   private wizard: WizardState = { category: null, step: 0, data: {} };
   private submitting = false;
   private trust: TrustScore | null = null;
+  private dragCleanup: (() => void) | null = null;
 
   static get observedAttributes() {
-    return ['app-id', 'api-url', 'position', 'theme', 'categories', 'user-id', 'user-email', 'branding', 'no-trigger',
+    return ['app-id', 'api-url', 'position', 'theme', 'categories', 'user-id', 'user-email', 'branding', 'no-trigger', 'draggable',
       'trust-min-moves', 'trust-min-scrolls', 'trust-min-keys', 'trust-min-time', 'trust-min-clicks'];
   }
 
@@ -135,12 +136,152 @@ export class FTPFeedbackElement extends HTMLElement {
     this.trust = new TrustScore(trustThresholds);
     this.trust.start();
 
+    // Initialize draggable if attribute is set
+    if (this.hasAttribute('draggable') && this.getAttribute('draggable') !== 'false') {
+      this.initDraggable();
+    }
+
     this.loadDraft();
     this.render();
   }
 
   disconnectedCallback() {
     this.trust?.destroy();
+    this.dragCleanup?.();
+    this.dragCleanup = null;
+  }
+
+  /**
+   * Makes the widget draggable with mouse + touch support.
+   * Position is persisted in sessionStorage so it survives SPA navigation.
+   */
+  private initDraggable() {
+    const el = this as HTMLElement;
+    const POSITION_KEY = 'ftp-feedback-position';
+
+    el.style.position = 'fixed';
+    el.style.zIndex = '99999';
+    el.style.cursor = 'grab';
+    el.style.touchAction = 'none';
+    el.style.userSelect = 'none';
+
+    // Restore saved position
+    const saved = sessionStorage.getItem(POSITION_KEY);
+    if (saved) {
+      try {
+        const { right, bottom } = JSON.parse(saved);
+        el.style.right = `${right}px`;
+        el.style.bottom = `${bottom}px`;
+      } catch { /* use defaults */ }
+    }
+
+    let isDragging = false;
+    let hasMoved = false;
+    let startX = 0;
+    let startY = 0;
+    let origRight = 0;
+    let origBottom = 0;
+
+    function getPosition() {
+      const rect = el.getBoundingClientRect();
+      return {
+        right: window.innerWidth - rect.right,
+        bottom: window.innerHeight - rect.bottom,
+      };
+    }
+
+    function clamp(r: number, b: number) {
+      const rect = el.getBoundingClientRect();
+      const maxRight = window.innerWidth - rect.width;
+      const maxBottom = window.innerHeight - rect.height;
+      return {
+        right: Math.max(0, Math.min(r, maxRight)),
+        bottom: Math.max(0, Math.min(b, maxBottom)),
+      };
+    }
+
+    function onStart(clientX: number, clientY: number) {
+      isDragging = true;
+      hasMoved = false;
+      startX = clientX;
+      startY = clientY;
+      const pos = getPosition();
+      origRight = pos.right;
+      origBottom = pos.bottom;
+      el.style.cursor = 'grabbing';
+      el.style.transition = 'none';
+    }
+
+    function onMove(clientX: number, clientY: number) {
+      if (!isDragging) return;
+      const dx = clientX - startX;
+      const dy = clientY - startY;
+      if (!hasMoved && Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+      hasMoved = true;
+      const { right, bottom } = clamp(origRight - dx, origBottom - dy);
+      el.style.right = `${right}px`;
+      el.style.bottom = `${bottom}px`;
+    }
+
+    function onEnd() {
+      if (!isDragging) return;
+      isDragging = false;
+      el.style.cursor = 'grab';
+      el.style.transition = '';
+      if (hasMoved) {
+        sessionStorage.setItem(POSITION_KEY, JSON.stringify(getPosition()));
+      }
+    }
+
+    const onMouseDown = (e: MouseEvent) => {
+      if ((e.target as HTMLElement).closest?.('form, textarea, input, select, button:not([class*="trigger"])')) return;
+      e.preventDefault();
+      onStart(e.clientX, e.clientY);
+    };
+    const onMouseMove = (e: MouseEvent) => {
+      if (isDragging) e.preventDefault();
+      onMove(e.clientX, e.clientY);
+    };
+    const onMouseUp = () => onEnd();
+
+    const onTouchStart = (e: TouchEvent) => {
+      if ((e.target as HTMLElement).closest?.('form, textarea, input, select, button:not([class*="trigger"])')) return;
+      const t = e.touches[0];
+      onStart(t.clientX, t.clientY);
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (!isDragging) return;
+      e.preventDefault();
+      const t = e.touches[0];
+      onMove(t.clientX, t.clientY);
+    };
+    const onTouchEnd = () => onEnd();
+
+    const onClick = (e: MouseEvent) => {
+      if (hasMoved) {
+        e.stopPropagation();
+        e.preventDefault();
+        hasMoved = false;
+      }
+    };
+
+    el.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', onTouchEnd);
+    el.addEventListener('click', onClick, true);
+
+    this.dragCleanup = () => {
+      el.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      el.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('click', onClick, true);
+    };
   }
 
   configure(opts: Partial<FTPConfig>) {
